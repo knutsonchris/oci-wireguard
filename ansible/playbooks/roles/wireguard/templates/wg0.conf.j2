@@ -1,0 +1,48 @@
+##################################
+###### wg interface config #####
+###############################
+### settings here define the wireguard server configuration
+
+[Interface]
+PrivateKey = {{ server_private_key.stdout }}
+Address = {{ wireguard_server_ip }}
+ListenPort = 443
+
+##################################
+###### iptables ################
+###############################
+### PostUp commands will be run when wireguard has started.
+# enable NAT translation of traffic originating from the wg0 interface and out the ens3 interface
+PostUp = iptables -t nat -I POSTROUTING 1 -s {{ wireguard_network_cidr }} -o ens3 -j MASQUERADE
+# accept all traffic originating from the wg0 interface
+PostUp = iptables -I INPUT 1 -i wg0 -j ACCEPT
+# accept all forwarded traffic to and from wg0 and ens3 (and vice versa)
+PostUp = iptables -I FORWARD 1 -i ens3 -o wg0 -j ACCEPT
+PostUp = iptables -I FORWARD 1 -i wg0 -o ens3 -j ACCEPT
+# allow all inbound UDP on port 443 from ens3
+PostUp = iptables -I INPUT 1 -i ens3 -p udp --dport 443 -j ACCEPT
+
+### These PostDown remove all the iptables rules added in the previous section
+PostDown = iptables -t nat -D POSTROUTING -s {{ wireguard_network_cidr }} -o ens3 -j MASQUERADE
+PostDown = iptables -D INPUT -i wg0 -j ACCEPT
+PostDown = iptables -D FORWARD -i ens3 -o wg0 -j ACCEPT
+PostDown = iptables -D FORWARD -i wg0 -o ens3 -j ACCEPT
+PostDown = iptables -D INPUT -i ens3 -p udp --dport 443 -j ACCEPT
+
+##################################
+###### peers ###################
+###############################
+### settings here define each peer's public key and what IP they will be assigned on the wireguard network.
+
+{% for peer in wireguard_peers %}
+[Peer]
+# {{ peer.name }}
+{# 
+    PublicKey statement explained:
+        "peer_public_keys.results" - the registered output from the "register public keys" task.
+        "selectattr('item.name', 'equalto', peer.name)" - searches through the list of results and chooses the one that corresponds to our current peer.
+        "(all_the_above)[0].stdout" : the selectattr result is a list, select the 0 item and grab the stdout which contains the public key.
+#}
+PublicKey =  {{ (peer_public_keys.results | selectattr('item.name', 'equalto', peer.name) | list)[0].stdout }}
+AllowedIPs = {{ peer.allowed_ips }}
+{% endfor %}

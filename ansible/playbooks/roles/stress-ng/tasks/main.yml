@@ -1,0 +1,21 @@
+---
+- name: install stress-ng
+  become: true
+  apt:
+    update_cache: yes
+    name: stress-ng
+    state: present
+
+- name: create the stress-ng unitfile
+  become: true
+  ansible.builtin.template:
+    dest: /lib/systemd/system/stress-ng.service
+    src: templates/stress-ng.service.j2
+
+- name: enable the unit
+  become: true
+  ansible.builtin.systemd:
+    enabled: true
+    name: stress-ng.service
+    state: started
+  

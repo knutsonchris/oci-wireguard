@@ -1,0 +1,129 @@
+---
+- name: install wireguard
+  become: true
+  apt:
+    update_cache: yes
+    name: wireguard
+    state: present
+  tags: wireguard
+
+- name: install ufw
+  become: true
+  apt:
+    update_cache: yes
+    name: ufw
+    state: present
+  tags: wireguard
+
+- name: create directory for client keys
+  become: true
+  file:
+    path: /etc/wireguard/clients
+    state: directory
+
+- name: create private keys for each peer
+  become: true
+  shell:
+    cmd: wg genkey > /etc/wireguard/clients/{{ item.name }}.key
+    creates: /etc/wireguard/clients/{{ item.name }}.key
+  loop: "{{ wireguard_peers }}"
+
+- name: register private keys for each peer
+  become: true
+  shell:
+    cmd: cat /etc/wireguard/clients/{{ item.name }}.key
+  register: peer_private_keys
+  loop: "{{ wireguard_peers }}"
+
+- name: create public keys for each peer
+  become: true
+  shell:
+    cmd: cat /etc/wireguard/clients/{{ item.name }}.key | wg pubkey > /etc/wireguard/clients/{{ item.name }}.key.pub
+    creates: /etc/wireguard/clients/{{ item.name }}.key.pub
+  loop: "{{ wireguard_peers }}"
+
+- name: register public keys for each peer
+  become: true
+  shell:
+    cmd: cat /etc/wireguard/clients/{{ item.name }}.key.pub
+  register: peer_public_keys
+  loop: "{{ wireguard_peers }}"
+
+- name: create server private key
+  become: true
+  shell:
+    cmd: wg genkey > /etc/wireguard/private.key
+    creates: /etc/wireguard/private.key
+
+- name: register server private key
+  become: true
+  shell:
+    cmd: cat /etc/wireguard/private.key
+  register: server_private_key
+
+- name: create server public key
+  become: true
+  shell:
+    cmd: cat /etc/wireguard/private.key | wg pubkey > /etc/wireguard/public.key
+    creates: /etc/wireguard/public.key
+
+- name: register server public key
+  become: true
+  shell:
+    cmd: cat /etc/wireguard/public.key
+  register: server_public_key
+
+- name: create peer configs
+  become: true
+  ansible.builtin.template:
+    dest: /etc/wireguard/clients/{{ item.name }}.conf
+    src: templates/peer.conf.j2
+  loop: "{{ wireguard_peers }}"
+  vars:
+    name: "{{ item.name }}"
+    allowed_ips: "{{ item.allowed_ips }}"
+
+- name: copy peer configs to local machine
+  become: true
+  ansible.builtin.fetch:
+    flat: true
+    src: /etc/wireguard/clients/{{ item.name }}.conf
+    dest: ../../peer_configs/{{ item.name }}.conf
+  loop: "{{ wireguard_peers }}"
+
+- name: create wg0 conf
+  become: true
+  ansible.builtin.template:
+    dest: /etc/wireguard/wg0.conf
+    src: templates/wg0.conf.j2
+
+- name: enable ipv4 forwarding
+  become: true
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: 1
+
+- name: Allow 443 udp
+  become: true
+  community.general.ufw:
+    rule: allow
+    port: '443'
+    proto: udp
+
+- name: enable wireguard (so it starts on boot)
+  become: true
+  ansible.builtin.systemd:
+    enabled: true
+    name: wg-quick@wg0.service
+    state: started
+
+- name: stop wireguard with wg-quick (to force re-run of iptables commands)
+  become: true
+  shell:
+    cmd: wg-quick down wg0
+  ignore_errors: true
+
+- name: start wireguard with wg-quick (to force re-run of iptables commands)
+  become: true
+  shell:
+    cmd: wg-quick up wg0

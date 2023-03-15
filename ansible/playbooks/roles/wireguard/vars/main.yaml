@@ -1,0 +1,13 @@
+# this port must be the same port allowed by the terraform
+wireguard_listen_port: 443
+
+# this network cidr defines the wireguard network
+wireguard_network_cidr: 10.8.0.0/24
+wireguard_server_ip: 10.8.0.1/24
+
+# each peer must have its own unique IP in the wireguard network
+wireguard_peers:
+  - name: gitsquash
+    allowed_ips: 10.8.0.2/32
+  - name: example2
+    allowed_ips: 10.8.0.3/32

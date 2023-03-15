@@ -1,0 +1,7 @@
+[Unit]
+Description="stress-ng unit that will keep cpu at roughly 10%, escaping the idle instance reaper in OCI"
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/stress-ng -c 0 -l 10
+Restart=on-failure
